@@ -4,6 +4,7 @@ import json
 import logging
 import re
 
+import backoff
 from datetime import datetime, timedelta
 import stripe
 import stripe.error
@@ -372,8 +373,9 @@ def reduce_foreign_keys(rec, stream_name):
     return rec
 
 
+@backoff.on_exception(backoff.expo, stripe.error.RateLimitError, max_tries=8)
 def paginate(sdk_obj, filter_key, start_date, end_date, limit=100):
-    yield from sdk_obj.list(
+    return sdk_obj.list(
         limit=limit,
         stripe_account=Context.config.get('account_id'),
         # None passed to starting_after appears to retrieve
@@ -661,6 +663,7 @@ def should_sync_event(events_obj, object_type, id_to_created_map):
         id_to_created_map[event_resource_id] = events_obj.created
     return should_sync
 
+
 def recursive_to_dict(some_obj):
     if isinstance(some_obj, stripe.stripe_object.StripeObject):
         return recursive_to_dict(dict(some_obj))
@@ -673,6 +676,12 @@ def recursive_to_dict(some_obj):
 
     # Else just return
     return some_obj
+
+
+@backoff.on_exception(backoff.expo, stripe.error.RateLimitError, max_tries=8)
+def _request(**kwargs):
+    return STREAM_SDK_OBJECTS['events']['sdk_object'].list(**kwargs)
+
 
 def sync_event_updates(stream_name):
     '''
@@ -698,7 +707,7 @@ def sync_event_updates(stream_name):
     while not stop_paging:
         extraction_time = singer.utils.now()
 
-        response = STREAM_SDK_OBJECTS['events']['sdk_object'].list(**{
+        response = _request(**{
             "limit": 100,
             "type": STREAM_TO_TYPE_FILTER[stream_name]['type'],
             "stripe_account" : Context.config.get('account_id'),
