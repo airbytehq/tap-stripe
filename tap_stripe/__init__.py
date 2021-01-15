@@ -679,8 +679,8 @@ def recursive_to_dict(some_obj):
 
 
 @backoff.on_exception(backoff.expo, stripe.error.RateLimitError, max_tries=8)
-def _request(**kwargs):
-    return STREAM_SDK_OBJECTS['events']['sdk_object'].list(**kwargs)
+def _request(stream_name, **kwargs):
+    return STREAM_SDK_OBJECTS[stream_name]['sdk_object'].list(**kwargs)
 
 
 def sync_event_updates(stream_name):
@@ -707,7 +707,7 @@ def sync_event_updates(stream_name):
     while not stop_paging:
         extraction_time = singer.utils.now()
 
-        response = _request(**{
+        response = _request("events", **{
             "limit": 100,
             "type": STREAM_TO_TYPE_FILTER[stream_name]['type'],
             "stripe_account" : Context.config.get('account_id'),
